@@ -1,4 +1,10 @@
 # ==============================================
 # 因为electron 编辑环境大于100mb 忽略electron环境目录
 # ==============================================
-node_modules/electron/
+node_modules/
+dist/
+build/
+out/
+*.log
+.DS_Store
+Thumbs.db
