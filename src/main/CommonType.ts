@@ -3,7 +3,7 @@
  * 用于描述自定义类型中各个字段的校验规则
  */
 interface FieldRule {
-    type: 'number' | 'string' | 'boolean' | 'numberArray' | 'stringArray' | 'booleanArray';
+    type: string;//'number' | 'string' | 'boolean' | 'numberArray' | 'stringArray' | 'booleanArray';
     allowNull: boolean;
     allowEmptyArray?: boolean;
 }

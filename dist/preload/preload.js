@@ -29,11 +29,6 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
             resolve(file_list);
         }));
     },
-    // choseFile:()=>{
-    //   console.log("choseFile11111111111111111111111111111");
-    //   ipcRenderer.invoke('dialog:openFile');
-    //   console.log("choseFile22222222222222222222222222222");
-    // },
     choseFolder: () => {
         return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
             //让主进程打开弹窗,并等待其选择完文件返回
@@ -44,15 +39,19 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         }));
     },
     choseSavePath: (who) => {
+        //保存路径暂时只能选择一个文件夹路径
         return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
-            //让主进程打开弹窗,并等待其选择完文件返回
-            //这里需要等待选择完成，也是一个promise， 需要使用ipcRenderer.invoke函数来进行等待，具体详情查看【 https://www.electronjs.org/docs/latest/api/ipc-renderer#ipcrendererinvokechannel-args 】
             let file_list = yield electron_1.ipcRenderer.invoke('chose_save_path');
             console.log('preload chose_save_path :::', file_list);
             resolve(file_list);
         }));
     },
-    changeExcel: () => {
+    beginChange: (paths) => {
+        return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
+            yield electron_1.ipcRenderer.invoke('begin_change', paths);
+            console.log('preload beginChange :::', paths);
+            // resolve(file_list);
+        }));
     }
 });
 // console.log("222222 preload.js  now contextBridge double direction line API  is be setted: window[electronAPI]::: ", window["electronAPI"]);

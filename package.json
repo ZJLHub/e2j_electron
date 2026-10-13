@@ -1,12 +1,12 @@
 {
   "name": "cocos-electron-ts",
   "version": "1.0.0",
-  "main": "dist/main/main.js",  
+  "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc",                  
-    "watch": "tsc --watch",          
-    "start": "electron .",           
-    "dist": "npm run build && electron-builder"  
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/electron": "^1.6.10",
@@ -19,15 +19,18 @@
     "appId": "com.your.cocosapp",
     "productName": "CocosElectronApp",
     "directories": {
-      "output": "release"  
+      "output": "release"
     },
     "win": {
-      "target": "nsis",    
-      "icon": "resource/icon.ico"  
+      "target": "nsis",
+      "icon": "resource/icon.ico"
     },
     "nsis": {
-      "oneClick": false,   
+      "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
   }
 }

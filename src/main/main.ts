@@ -69,7 +69,6 @@ function createMainWindow() {
 // Electron 初始化完成后创建窗口
 app.whenReady().then(() => {
   createMainWindow();
-  E2j.instance.add_ipc_handle();
 
   // macOS 特殊处理：窗口关闭后重新激活时重建窗口
   app.on('activate', () => {

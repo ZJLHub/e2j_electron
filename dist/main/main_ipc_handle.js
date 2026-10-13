@@ -14,9 +14,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const main_1 = require("./main");
+const e2j_1 = __importDefault(require("./e2j"));
 class main_ipc_handle {
     static get instance() {
         if (!main_ipc_handle._instance) {
@@ -62,6 +66,10 @@ class main_ipc_handle {
     }
     // 点击开始转换按钮
     add_begin_change() {
+        electron_1.ipcMain.handle('begin_change', (e, paths) => __awaiter(this, void 0, void 0, function* () {
+            console.log("主进程监听到 ，  add_begin_change");
+            e2j_1.default.instance.begin_change(paths);
+        }));
     }
 }
 main_ipc_handle._instance = null;

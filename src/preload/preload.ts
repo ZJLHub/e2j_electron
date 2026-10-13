@@ -1,6 +1,7 @@
 // const { dialog } = require('electron')
 // const { contextBridge, ipcRenderer } = require('electron/renderer')
 import { contextBridge, ipcRenderer } from 'electron';
+import path from 'path';
 // console.log("1111111111111111111111111111111111 preload.js is be  load  , now set contextBridge double line API : [electronA{I}]::: ");
 // contextBridge.exposeInMainWorld('electronAPI', {
 //   choseFile: () => ipcRenderer.send('chose_file'),
@@ -20,11 +21,6 @@ contextBridge.exposeInMainWorld('electronAPI',
         resolve(file_list);
       });
     },
-    // choseFile:()=>{
-    //   console.log("choseFile11111111111111111111111111111");
-    //   ipcRenderer.invoke('dialog:openFile');
-    //   console.log("choseFile22222222222222222222222222222");
-    // },
     choseFolder: () => {//choseFolder
       return new Promise(async (resolve) => {
         //让主进程打开弹窗,并等待其选择完文件返回
@@ -44,11 +40,11 @@ contextBridge.exposeInMainWorld('electronAPI',
       });
     },
 
-    beginChange: () => {//开始转换excel文件
+    beginChange: (paths:string[]) => {//开始转换excel文件
       return new Promise(async (resolve) => {
-        let file_list = await ipcRenderer.invoke('begin_change');
-        console.log('preload chose_save_path :::', file_list);
-        resolve(file_list);
+        await ipcRenderer.invoke('begin_change',paths);
+        console.log('preload beginChange :::', paths);
+        // resolve(file_list);
       });
     }
 

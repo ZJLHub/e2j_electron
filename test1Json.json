@@ -1,0 +1,18 @@
+{
+    "allScore": {
+        "yuwen": [
+            "A\n a",
+            "b"
+        ],
+        "shuxue": "A",
+        "all_score": 666
+    },
+
+    "allScore2": {
+        "ziduan1":666,
+        "ziduan2": {
+            "A": 666,
+            "B": 777
+        }
+    }
+}

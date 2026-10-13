@@ -12,44 +12,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const electron_1 = require("electron");
 const promises_1 = __importDefault(require("fs/promises"));
 const path_1 = __importDefault(require("path"));
+const xlsx_1 = __importDefault(require("xlsx"));
+const data_checker_1 = __importDefault(require("./data_checker"));
+const ValidationResult_1 = __importDefault(require("./ValidationResult"));
+const custom_type_checker_1 = __importDefault(require("./custom_type_checker"));
 class E2j {
     constructor() {
-        //#region *****************需求描述*****************
-        /** 由于团队技术和分工的不同，可能会有不同的excel配置表可能会有多种组织习惯，
-         *  这里只是其中一种，如有其习惯，则此脚本可能不再适用，需要另外重新组织需求和代码实现
-         *
-         *  下面是对于excel表格组织方式的规范，以及对应的该规范下的代码实现
-         *
-         *   配置表以列 做为 表结构字段内容，以行 作为 该表的数据内容：如一个学生表student.excel
-         *   id    name   sex   Chinese    Math    ...
-         *    0   李二凤   女     100       100     ...
-         *    1    张三    男      60        60     ...
-         *
-         *   配置表在头6行对每一列属性进行描述，比如: 第一行用于描述此表作用 【学生表，用于记录学生基本信息和学习成绩】
-         *   具体如下：
-         *   第一行用于描述此表作用
-         *   第二行用于描述此列字段需要到出的目标端，client只导出客户端，server只导出服务端，client+server导出到客户端和服务端
-         *   第三行表示字段可不可空 yes(可空)/no(不可空)  默认no
-         *   第四行用于对字段进行表述。注释注解等。  id唯一标识，姓名  性别  语文成绩  数学成绩
-         *   第五行作为 字段名称  id      name     sex      Chinese   Math
-         *   第六为数据类型     number  string   string     number   number
-         *      - 一共支持number,string,boolean,numberArray,stringArray,booleanArray,XXX(自定义类型)
-         *      - 字符串默认不需要双引号包裹
-         *      - XXX为二重类形， 比如一个数据需要小型的复合类型结构，可以通过在该表的其他页签进行声明
-         *      - XXXArray 表示为二重类型的数组类型
-         *      - 数组的配置默认需要[]包裹，例如numberArray：[1,2,3];
-         *
-        */
-        //#endregion ***************需求描述****************
-        this._all_excel_paths = [];
-        /**
-         * - 类私有属性：存储已收集的Excel「小写文件名」（key）和「完整路径」（value）
-         * - 作用：跨递归调用共享状态，实现不分大小写的同名检测
-        */
         this._collectedExcelNames = new Map();
+        this._all_excel_paths = [];
+        // 全局缓存：所有Sheet对应的自定义类型结构，预扫描完成后完整填充
+        this._customSchemaMap = new Map();
         //#endregion
     }
     static get instance() {
@@ -58,13 +32,13 @@ class E2j {
         }
         return E2j._instance;
     }
-    add_ipc_handle() {
-        console.log("ok,i will no fuck u, code is success");
-        electron_1.ipcMain.addListener("change_excel", (e) => {
+    begin_change(paths) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.get_all_excel_path(paths);
+            yield this._check_excel_config();
         });
     }
-    /**根据传入的路近获取所有excel的文件路近，
-     * @paths 由用户选择的文件和文件夹组合而成 */
+    //#region 路径遍历模块（无改动，仅分离独立区域）
     get_all_excel_path() {
         return __awaiter(this, arguments, void 0, function* (paths = []) {
             this._all_excel_paths = [];
@@ -73,60 +47,272 @@ class E2j {
                 return this._all_excel_paths;
             }
             for (const singlePath of paths) {
-                yield this._traverseFolder(singlePath);
+                const stat = yield promises_1.default.stat(singlePath);
+                if (stat.isDirectory()) {
+                    yield this._traverseFolder(singlePath);
+                }
+                else {
+                    this._all_excel_paths.push(singlePath);
+                }
             }
             console.log(`Excel文件收集完成，共${this._all_excel_paths.length}个有效文件`);
             return this._all_excel_paths;
         });
     }
-    /**遍历文件夹  并且把所有检测到的excel文件加入到this._all_excel_paths数组中 */
     _traverseFolder(folderPath) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                // 1. 读取当前文件夹下的所有文件/子文件夹（不包含符号链接，避免循环引用）
                 const dirEntries = yield promises_1.default.readdir(folderPath, {
-                    withFileTypes: true, // 直接获取文件类型信息，避免二次stat调用，提升性能
-                    recursive: false // 关闭Node.js原生递归，手动控制递归逻辑（更灵活）
+                    withFileTypes: true,
+                    recursive: false
                 });
-                7;
-                // 2. 遍历当前文件夹下的每个条目
                 for (const entry of dirEntries) {
-                    // 拼接当前条目的完整路径（处理跨平台路径分隔符问题）
                     const fullPath = path_1.default.join(folderPath, entry.name);
-                    // 3. 区分「文件」和「子文件夹」
                     if (entry.isFile()) {
-                        // 3.1 若为文件：判断是否为Excel格式（.xlsx/.xls，不区分大小写）
-                        const fileExt = path_1.default.extname(entry.name).toLowerCase(); //extname函数返回的是后缀名: .xlsx/.xls
+                        const fileExt = path_1.default.extname(entry.name).toLowerCase();
                         if (fileExt === '.xlsx' || fileExt === '.xls') {
                             this._all_excel_paths.push(fullPath);
                             console.log(`已收集Excel文件（子文件夹）：${fullPath}`);
                         }
-                        // 非Excel文件直接跳过（可根据需求添加日志）
-                        // else {
-                        //     console.log(`跳过非Excel文件（子文件夹）：${fullPath}`);
-                        // }
+                        else {
+                            console.log(`跳过非Excel文件（子文件夹）：${fullPath}`);
+                        }
                     }
                     else if (entry.isDirectory()) {
-                        // 3.2 若为子文件夹：递归调用自身，继续遍历子文件夹
                         console.log(`进入子文件夹：${fullPath}`);
                         yield this._traverseFolder(fullPath);
                     }
-                    // 忽略符号链接、设备文件等特殊类型（避免异常）
                 }
             }
             catch (err) {
-                // 捕获文件夹访问错误（如权限不足、路径不存在等）
                 console.error(`遍历文件夹失败：${folderPath}，原因：${err.message}`);
             }
         });
     }
-    //#region 对excel表格进行基本的配置检测,并且进行转换
-    /**读取excel数据，并且根据对应1数据类型检测数据是否正确 */
-    _check_date() {
-        //1、根据路径读取excel   
+    //#endregion
+    //#region Excel校验总入口（仅调度，轻量化）
+    _check_excel_config() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const excelPaths = this._all_excel_paths;
+            if (!excelPaths || excelPaths.length === 0) {
+                console.warn("_check_excel_config：无待校验Excel文件");
+                return;
+            }
+            const dataChecker = data_checker_1.default.instance;
+            this._customSchemaMap.clear();
+            // 阶段1：预扫描全部文件+全部Sheet，统一生成并缓存所有自定义Schema（修复时序bug核心）
+            yield this._preScanAllExcelSheets(excelPaths);
+            console.log(`预扫描完成，已加载全部自定义类型定义，共${this._customSchemaMap.size}个Schema缓存`);
+            // 阶段2：全部Schema就绪后，二次遍历做真实数据校验
+            for (const filePath of excelPaths) {
+                try {
+                    console.log(`\n===== 开始校验Excel文件：${filePath} =====`);
+                    const workbook = xlsx_1.default.readFile(filePath, {
+                        cellDates: true,
+                        cellNF: true,
+                        raw: false
+                    });
+                    const sheetNames = workbook.SheetNames;
+                    console.log(`文件包含Sheet列表：${sheetNames.join(', ')}`);
+                    for (const sheetName of sheetNames) {
+                        const sheet = workbook.Sheets[sheetName];
+                        const sheetData = xlsx_1.default.utils.sheet_to_json(sheet, { header: 1, raw: false });
+                        // 解析表头获取标准化字段配置
+                        const parseResult = this._parseSheetHeaderToSchema(sheetData, sheetName);
+                        if (!parseResult.valid)
+                            continue;
+                        const columnConfigs = parseResult.configs;
+                        // 校验当前Sheet所有业务数据行
+                        yield this._validateSheetDataRows(filePath, sheetName, sheetData, columnConfigs, dataChecker);
+                    }
+                    console.log(`===== 文件【${filePath}】校验处理完成 =====`);
+                }
+                catch (err) {
+                    console.error(`处理Excel文件【${filePath}】失败：${err.message}，跳过该文件`);
+                    continue;
+                }
+            }
+        });
     }
-    /**返回对应名称的页面 的 数据结构 */
-    _get_XXX_data_Config() {
+    //#endregion
+    //#region 阶段1：预扫描全量Sheet，统一缓存自定义Schema（解决时序bug）
+    /** 遍历全部Excel，读取所有Sheet表头，提前把所有自定义类型Schema存入缓存 */
+    _preScanAllExcelSheets(filePaths) {
+        return __awaiter(this, void 0, void 0, function* () {
+            for (const filePath of filePaths) {
+                try {
+                    const workbook = xlsx_1.default.readFile(filePath, {
+                        cellDates: true,
+                        cellNF: true,
+                        raw: false
+                    });
+                    for (const sheetName of workbook.SheetNames) {
+                        const sheet = workbook.Sheets[sheetName];
+                        const sheetData = xlsx_1.default.utils.sheet_to_json(sheet, { header: 1, raw: false });
+                        const parseResult = this._parseSheetHeaderToSchema(sheetData, sheetName);
+                        // 表头合法则存入全局Schema缓存
+                        if (parseResult.valid) {
+                            this._customSchemaMap.set(sheetName, parseResult.schema);
+                            console.debug(`预扫描缓存自定义类型：${sheetName}`);
+                        }
+                    }
+                }
+                catch (err) {
+                    console.warn(`预扫描文件【${filePath}】异常，跳过该文件预解析：${err.message}`);
+                    continue;
+                }
+            }
+        });
+    }
+    /** 解析单Sheet6行表头，输出字段配置 + 当前Sheet对应的CustomSchema */
+    _parseSheetHeaderToSchema(sheetData, sheetName) {
+        // 表头行数基础校验
+        if (sheetData.length < 6) {
+            console.error(`Sheet【${sheetName}】表头行数不足，至少需要6行，当前仅${sheetData.length}行，跳过该Sheet`);
+            return { valid: false, configs: [], schema: {} };
+        }
+        const [_tableDescRow, exportTargetRow, allowNullRow, _commentRow, fieldNameRow, typeRow] = sheetData;
+        // 生成标准化列配置，同时校验表头合法性
+        const configResult = this._createSheetColumnConfigs({
+            exportTargetRow,
+            allowNullRow,
+            fieldNameRow,
+            typeRow,
+            commentRow: _commentRow,
+            sheetName
+        });
+        if (!configResult.valid) {
+            return { valid: false, configs: [], schema: {} };
+        }
+        // 根据字段配置生成当前Sheet的自定义类型结构
+        const sheetSchema = {};
+        for (const cfg of configResult.configs) {
+            sheetSchema[cfg.fieldName] = {
+                type: cfg.type,
+                allowNull: cfg.allowNull
+            };
+        }
+        return {
+            valid: true,
+            configs: configResult.configs,
+            schema: sheetSchema
+        };
+    }
+    /** 纯表头校验工具：逐列校验导出目标、可空、字段名、类型，返回标准化字段数组 */
+    _createSheetColumnConfigs(args) {
+        const { exportTargetRow, allowNullRow, fieldNameRow, typeRow, commentRow, sheetName } = args;
+        const maxColCount = Math.max((exportTargetRow === null || exportTargetRow === void 0 ? void 0 : exportTargetRow.length) || 0, (allowNullRow === null || allowNullRow === void 0 ? void 0 : allowNullRow.length) || 0, (fieldNameRow === null || fieldNameRow === void 0 ? void 0 : fieldNameRow.length) || 0, (typeRow === null || typeRow === void 0 ? void 0 : typeRow.length) || 0);
+        if (maxColCount === 0) {
+            console.error(`Sheet【${sheetName}】表头无有效列，跳过`);
+            return { valid: false, configs: [] };
+        }
+        const columnConfigs = [];
+        const fieldNameSet = new Set();
+        let isHeaderValid = true;
+        for (let colIndex = 0; colIndex < maxColCount; colIndex++) {
+            const exportTarget = ((exportTargetRow === null || exportTargetRow === void 0 ? void 0 : exportTargetRow[colIndex]) || '').toString().trim();
+            const allowNullStr = ((allowNullRow === null || allowNullRow === void 0 ? void 0 : allowNullRow[colIndex]) || '').toString().trim().toLowerCase();
+            const fieldName = ((fieldNameRow === null || fieldNameRow === void 0 ? void 0 : fieldNameRow[colIndex]) || '').toString().trim();
+            const type = ((typeRow === null || typeRow === void 0 ? void 0 : typeRow[colIndex]) || '').toString().trim();
+            const comment = ((commentRow === null || commentRow === void 0 ? void 0 : commentRow[colIndex]) || '').toString().trim();
+            // 导出目标校验
+            if (!exportTarget || !['client', 'server', 'client+server'].includes(exportTarget)) {
+                console.error(`Sheet【${sheetName}】列${colIndex + 1}：导出目标${exportTarget || '空'}不合法`);
+                isHeaderValid = false;
+                continue;
+            }
+            // 可空标识校验
+            if (allowNullStr && !['yes', 'no'].includes(allowNullStr)) {
+                console.error(`Sheet【${sheetName}】列${colIndex + 1}：可空配置${allowNullStr}不合法，仅支持yes/no`);
+                isHeaderValid = false;
+                continue;
+            }
+            const allowNull = allowNullStr === 'yes';
+            // 字段名校验
+            if (!fieldName || fieldNameSet.has(fieldName)) {
+                console.error(`Sheet【${sheetName}】列${colIndex + 1}：字段名${fieldName || '空'}重复或为空`);
+                isHeaderValid = false;
+                continue;
+            }
+            fieldNameSet.add(fieldName);
+            // 类型非空校验
+            if (!type) {
+                console.error(`Sheet【${sheetName}】列${colIndex + 1}：数据类型不能为空`);
+                isHeaderValid = false;
+                continue;
+            }
+            columnConfigs.push({ fieldName, type, allowNull, exportTarget, comment });
+        }
+        return { valid: isHeaderValid, configs: columnConfigs };
+    }
+    //#endregion
+    //#region 阶段2：数据行校验拆分函数
+    /** 单Sheet全部业务数据行校验入口 */
+    _validateSheetDataRows(filePath, sheetName, sheetData, columnConfigs, dataChecker) {
+        const dataStartRowIndex = 6;
+        if (sheetData.length <= dataStartRowIndex) {
+            console.log(`Sheet【${sheetName}】无数据行，仅表头结构，跳过数据校验`);
+            return;
+        }
+        console.log(`Sheet【${sheetName}】开始校验数据行，共${sheetData.length - dataStartRowIndex}行数据`);
+        let dataErrorCount = 0;
+        for (let rowIndex = dataStartRowIndex; rowIndex < sheetData.length; rowIndex++) {
+            const rowData = sheetData[rowIndex];
+            const excelRow = rowIndex + 1;
+            for (let colIndex = 0; colIndex < columnConfigs.length; colIndex++) {
+                const cfg = columnConfigs[colIndex];
+                const cellValue = rowData === null || rowData === void 0 ? void 0 : rowData[colIndex];
+                const excelCol = colIndex + 1;
+                // 抽离独立单元格校验逻辑  
+                const validateRes = this._validateSingleCellByType(cellValue, cfg, dataChecker);
+                if (!validateRes.valid) {
+                    dataErrorCount++;
+                    console.error(`【错误】文件【${filePath}】Sheet【${sheetName}】行${excelRow}列${excelCol}【${cfg.fieldName}】：${validateRes.message}，原始值：${cellValue}`);
+                }
+                else {
+                    console.debug(`【通过】行${excelRow}列${excelCol}【${cfg.fieldName}】校验通过，格式化值：${validateRes.value}`);
+                }
+            }
+        }
+        if (dataErrorCount === 0) {
+            console.log(`Sheet【${sheetName}】数据行校验全部通过`);
+        }
+        else {
+            console.error(`Sheet【${sheetName}】数据校验完成，共发现${dataErrorCount}个错误`);
+        }
+    }
+    /** 抽离巨型switch，单独处理单个单元格类型校验（此时全局_customSchemaMap已全部加载完成，无时序bug） */
+    _validateSingleCellByType(cellValue, colConfig, dataChecker) {
+        const { type, allowNull } = colConfig;
+        switch (type) {
+            case 'number':
+                return dataChecker.checkNumber(cellValue, allowNull);
+            case 'string':
+                return dataChecker.checkString(cellValue, allowNull);
+            case 'boolean':
+                return dataChecker.checkBoolean(cellValue, allowNull);
+            case 'numberArray':
+                return dataChecker.checkNumberArray(cellValue, allowNull);
+            case 'stringArray':
+                return dataChecker.checkStringArray(cellValue, allowNull);
+            case 'booleanArray':
+                return dataChecker.checkBooleanArray(cellValue, allowNull);
+            default:
+                // 自定义结构体/结构体数组：此时所有Sheet已预加载，_customSchemaMap一定存在对应类型
+                const isArrayType = type.endsWith('Array');
+                const customTypeName = isArrayType ? type.slice(0, -5) : type;
+                const targetSchema = this._customSchemaMap.get(customTypeName);
+                // 这里不会再出现「自定义类型未定义」时序错误，只会真的不存在才报错
+                if (!targetSchema) {
+                    return ValidationResult_1.default.error(`自定义类型"${customTypeName}"不存在对应Sheet定义`);
+                }
+                if (isArrayType) {
+                    return custom_type_checker_1.default.instance.checkCustomArray(cellValue, targetSchema, allowNull);
+                }
+                else {
+                    return custom_type_checker_1.default.instance.checkCustom(cellValue, targetSchema, allowNull);
+                }
+        }
     }
 }
 E2j._instance = null;

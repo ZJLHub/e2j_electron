@@ -6,7 +6,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.mainWindow = void 0;
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
-const e2j_1 = __importDefault(require("./e2j"));
 const main_ipc_handle_1 = __importDefault(require("./main_ipc_handle"));
 // 创建窗口函数
 function createMainWindow() {
@@ -32,7 +31,7 @@ function createMainWindow() {
     // 开发阶段打开调试工具 （查看 Cocos 日志和错误）
     exports.mainWindow.webContents.openDevTools();
     //#region ------------添加ipc处理器------------
-    //添加进程间通信 , 处理chose_file(选择目标文件【可多选】)事件
+    //添加进程间通信 , 处理chose_file(选择转换目标文件【可多选】)事件
     main_ipc_handle_1.default.instance.add_chose_file();
     /** 封存
     ipcMain.handle('open_file', async () => {
@@ -47,8 +46,13 @@ function createMainWindow() {
       }
     });
     */
-    //添加进程间通信 , 处理chose_file(选择目标文件夹【可多选】)事件
+    //添加进程间通信 , 处理chose_folder(选择转换目标文件夹【可多选】)事件
     main_ipc_handle_1.default.instance.add_chose_folder();
+    //添加进程间通信 , 处理chose_savePath(选择保存转换后的json)事件
+    main_ipc_handle_1.default.instance.add_chose_savePath();
+    //添加进程间通信 , 处理开始转换
+    main_ipc_handle_1.default.instance.add_begin_change();
+    // E2j.instance.add_ipc_handle();
     //#endregion ------------添加ipc处理器------------
     // console.log("see see the wathc code");//-- 项目需要开启实时ts 转 js  ，工具库安装在项目内部，需要到项目内启动
     // ------------------------------------------ npm run watch   可通过开关此代码检查是否成功开启
@@ -56,7 +60,6 @@ function createMainWindow() {
 // Electron 初始化完成后创建窗口
 electron_1.app.whenReady().then(() => {
     createMainWindow();
-    e2j_1.default.instance.add_ipc_handle();
     // macOS 特殊处理：窗口关闭后重新激活时重建窗口
     electron_1.app.on('activate', () => {
         if (electron_1.BrowserWindow.getAllWindows().length === 0) {

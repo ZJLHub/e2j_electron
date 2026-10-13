@@ -58,9 +58,9 @@ export default class main_ipc_handle {
 
     // 点击开始转换按钮
     add_begin_change(){
-        ipcMain.handle('begin_change',async ()=>{
+        ipcMain.handle('begin_change',async (e,paths:string[])=>{
             console.log("主进程监听到 ，  add_begin_change");
-            E2j.instance.get_all_excel_path
+            E2j.instance.begin_change(paths);
         });
     }
 
